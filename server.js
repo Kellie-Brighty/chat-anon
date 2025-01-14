@@ -1,7 +1,8 @@
 import { WebSocketServer } from "ws";
 
 // Create the WebSocket server
-const PORT = process.env.PORT || 4000;
+// const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 6000;
 const wss = new WebSocketServer({ port: PORT });
 
 // Log a message when the server starts
@@ -17,7 +18,6 @@ wss.on("connection", (ws) => {
 
     // Handle search event for text
     if (data.action === "search") {
-      // Add the user to the clients array with their WebSocket and location
       clients.push({ ws, location: data.location });
       console.log("New user searching for text chat:", data.location);
 
@@ -39,19 +39,15 @@ wss.on("connection", (ws) => {
 
     // Handle video call initialization
     else if (data.action === "video_call") {
-      // Add the user to the videoClients array with their WebSocket and location
       videoClients.push({ ws, location: data.location });
       console.log("New user searching for video call:", data.location);
 
-      // Pair users if at least two are searching for video calls
       if (videoClients.length >= 2) {
         const [user1, user2] = videoClients.splice(0, 2);
 
-        // Assign partners
         user1.ws.partner = user2.ws;
         user2.ws.partner = user1.ws;
 
-        // Notify both users that a video call match was found
         user1.ws.send(
           JSON.stringify({ action: "match_found", type: "video_call" })
         );
@@ -63,11 +59,10 @@ wss.on("connection", (ws) => {
       }
     }
 
-    // Handle sending a message during a text chat or video call
+    // Handle sending a message
     else if (data.action === "send_message") {
       console.log("Message sent:", data.message);
 
-      // Check if the sender has a partner
       if (ws.partner) {
         ws.partner.send(
           JSON.stringify({ action: "message", message: data.message })
@@ -77,33 +72,48 @@ wss.on("connection", (ws) => {
       }
     }
 
-    // Handle video offer for WebRTC handshake
+    // Handle typing state
+    else if (data.action === "typing") {
+      console.log("User is typing...");
+      if (ws.partner) {
+        // Notify the partner that the user is typing
+        ws.partner.send(JSON.stringify({ action: "partner_typing" }));
+      }
+    }
+
+    // Handle stop typing state
+    else if (data.action === "stop_typing") {
+      console.log("User stopped typing.");
+      if (ws.partner) {
+        // Notify the partner that the user stopped typing
+        ws.partner.send(JSON.stringify({ action: "partner_stop_typing" }));
+      }
+    }
+
+    // Handle video offer
     else if (data.action === "video_offer") {
       console.log("Video offer received.");
       if (ws.partner) {
-        // Forward the video offer to the partner
         ws.partner.send(
           JSON.stringify({ action: "video_offer", offer: data.offer })
         );
       }
     }
 
-    // Handle video answer for WebRTC handshake
+    // Handle video answer
     else if (data.action === "video_answer") {
       console.log("Video answer received.");
       if (ws.partner) {
-        // Forward the video answer to the partner
         ws.partner.send(
           JSON.stringify({ action: "video_answer", answer: data.answer })
         );
       }
     }
 
-    // Handle ICE candidates for WebRTC
+    // Handle ICE candidates
     else if (data.action === "ice_candidate") {
       console.log("ICE candidate received.");
       if (ws.partner) {
-        // Forward the ICE candidate to the partner
         ws.partner.send(
           JSON.stringify({ action: "ice_candidate", candidate: data.candidate })
         );
@@ -113,16 +123,13 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     if (ws.partner) {
-      // Notify the partner that the user has disconnected
       ws.partner.send(JSON.stringify({ action: "partner_disconnected" }));
-      ws.partner.partner = null; // Remove the reverse link
+      ws.partner.partner = null;
     }
 
-    // Remove the disconnected user from the clients array
     const clientIndex = clients.findIndex((client) => client.ws === ws);
     if (clientIndex !== -1) clients.splice(clientIndex, 1);
 
-    // Remove the disconnected user from the videoClients array
     const videoClientIndex = videoClients.findIndex(
       (client) => client.ws === ws
     );

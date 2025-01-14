@@ -9,6 +9,8 @@ const App = () => {
   const [input, setInput] = useState("");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [partnerTyping, setPartnerTyping] = useState(false); // Track partner's typing status
+  const typingTimeoutRef = useRef<number | null>(null);
 
   // Video Call State
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -44,12 +46,13 @@ const App = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, partnerTyping]);
 
   const initializeWebSocket = (action: string) => {
     if (!ip) return;
 
-    const socket = new WebSocket("ws://localhost:4000"); // Replace with your WebSocket server URL
+    const socket = new WebSocket("wss://chat.nickyai.online"); // Replace with your WebSocket server URL
+    // const socket = new WebSocket("ws://localhost:4000"); // Replace with your WebSocket server URL
     setWs(socket);
     setStatus("searching");
 
@@ -76,8 +79,17 @@ const App = () => {
         handleVideoAnswer(data.answer);
       } else if (data.action === "ice_candidate") {
         handleNewICECandidate(data.candidate);
+      } else if (data.action === "partner_typing") {
+        setPartnerTyping(true);
+      } else if (data.action === "partner_stop_typing") {
+        setPartnerTyping(false);
       } else if (data.action === "partner_disconnected") {
-        handlePartnerDisconnected();
+        setMessages((prev) => [
+          ...prev,
+          { text: "Your partner has disconnected.", fromMe: false },
+        ]);
+        setPartnerTyping(false); // Reset typing state
+        // setStatus("idle");
       }
     };
 
@@ -180,23 +192,34 @@ const App = () => {
     }
   };
 
-  const handlePartnerDisconnected = () => {
-    setMessages((prev) => [
-      ...prev,
-      { text: "Your partner has disconnected.", fromMe: false },
-    ]);
-    setLocalStream(null);
-    setRemoteStream(null);
-    setPeerConnection(null);
-    setStatus("idle");
-  };
-
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && ws) {
       setMessages((prev) => [...prev, { text: `You: ${input}`, fromMe: true }]);
       ws.send(JSON.stringify({ action: "send_message", message: input }));
       setInput("");
+
+      // Notify partner that typing has stopped
+      ws.send(JSON.stringify({ action: "stop_typing" }));
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+
+    if (ws) {
+      // Notify partner that typing has started
+      ws.send(JSON.stringify({ action: "typing" }));
+
+      // Clear any existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Set a timeout to send "stop_typing" if the user stops typing
+      typingTimeoutRef.current = window.setTimeout(() => {
+        ws.send(JSON.stringify({ action: "stop_typing" }));
+      }, 2000); // 2 seconds of inactivity
     }
   };
 
@@ -257,6 +280,11 @@ const App = () => {
                     You have been connected with an anonymous user from {ip}
                   </p>
                 )}
+                {partnerTyping && (
+                  <p className="text-gray-400 italic">
+                    Your partner is typing...
+                  </p>
+                )}
                 {/* Invisible div for scrolling */}
                 <div ref={messagesEndRef} />
               </div>
@@ -267,7 +295,7 @@ const App = () => {
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={handleInputChange}
                   placeholder="Type a message..."
                   className="flex-grow px-4 py-2 bg-blue-800 text-white rounded-lg focus:outline-none"
                 />
@@ -283,7 +311,18 @@ const App = () => {
 
           {status === "video_call" && (
             <div className="space-y-4">
-              <div className="video-container flex space-x-4">
+              <div className="video-container relative w-full h-[400px] bg-black rounded-lg">
+                {/* Remote Video */}
+                <video
+                  autoPlay
+                  playsInline
+                  ref={(video) => {
+                    if (video && remoteStream) video.srcObject = remoteStream;
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover rounded-lg"
+                />
+
+                {/* Local Video */}
                 <video
                   autoPlay
                   muted
@@ -291,18 +330,10 @@ const App = () => {
                   ref={(video) => {
                     if (video && localStream) video.srcObject = localStream;
                   }}
-                  className="w-1/2 rounded-lg"
-                />
-                <video
-                  autoPlay
-                  playsInline
-                  ref={(video) => {
-                    if (video && remoteStream) video.srcObject = remoteStream;
-                  }}
-                  className="w-1/2 rounded-lg"
+                  className="absolute top-4 right-4 w-32 h-32 object-cover border-2 border-white rounded-lg shadow-lg"
                 />
               </div>
-              <p>You are in a video call!</p>
+              {/* <p>You are in a video call!</p> */}
             </div>
           )}
         </main>
