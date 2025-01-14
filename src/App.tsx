@@ -204,6 +204,30 @@ const App = () => {
     }
   };
 
+  const handleExitChat = () => {
+    if (ws) {
+      ws.close();
+      setWs(null);
+    }
+    // Reset state
+    setStatus("idle");
+    setMessages([]);
+    setPartnerTyping(false);
+    setInput("");
+
+    // Stop local media stream
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      setLocalStream(null);
+    }
+
+    // Close peer connection
+    if (peerConnection) {
+      peerConnection.close();
+      setPeerConnection(null);
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
 
@@ -289,7 +313,7 @@ const App = () => {
                 <div ref={messagesEndRef} />
               </div>
               <form
-                className="mt-4 flex flex-col sm:flex-row items-center space-x-2"
+                className="mt-4 flex sm:flex-row items-center space-x-2"
                 onSubmit={handleSendMessage}
               >
                 <input
@@ -300,12 +324,18 @@ const App = () => {
                   className="flex-grow px-4 py-2 bg-blue-800 text-white rounded-lg focus:outline-none"
                 />
                 <button
-                  className="px-4 py-2 bg-gradient-to-r from-teal-400 to-blue-500 rounded-lg font-medium hover:opacity-90 transition-opacity mt-2 sm:mt-0"
+                  className="px-4 py-2 bg-gradient-to-r from-teal-400 to-blue-500 rounded-lg font-medium hover:opacity-90 transition-opacity sm:mt-0"
                   type="submit"
                 >
                   Send
                 </button>
               </form>
+              <button
+                onClick={handleExitChat}
+                className="mt-4 px-4 py-2 bg-red-400 rounded-lg text-white hover:bg-red-700 w-full"
+              >
+                Exit Chat
+              </button>
             </div>
           )}
 
